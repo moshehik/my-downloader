@@ -13,56 +13,61 @@ const auth = new google.auth.GoogleAuth({
 });
 const drive = google.drive({ version: 'v3', auth });
 
-app.get('/', (req, res) => res.send('Server is running with API mode!'));
+app.get('/', (req, res) => res.send('<h1>השרת של חיה עובד עם API MP4!</h1>'));
 
 app.post('/download', async (req, res) => {
   const videoUrl = req.body.url;
-  // חילוץ ה-Video ID מהקישור
-  const videoId = videoUrl.split('v=')[1]?.split('&')[0] || videoUrl.split('/').pop();
+  console.log("מנסה להוריד דרך API חיצוני:", videoUrl);
 
   try {
-    console.log("פונה ל-API החיצוני עבור וידאו:", videoId);
-    
-    // פנייה ל-RapidAPI לקבלת קישור הורדה
-    const options = {
+    // פנייה ל-API החדש ששלחת
+    const apiOptions = {
       method: 'GET',
-      url: 'https://youtube-convert-download-api-mp3-mp4.p.rapidapi.com/dl/',
-      params: { videoId: videoId, quality: '1080', format: 'mp4' },
+      url: 'https://youtube-mp4-downloader.p.rapidapi.com/mp4',
+      params: { url: videoUrl }, // כאן אנחנו שולחים את הקישור המלא
       headers: {
-        'x-rapidapi-host': 'youtube-convert-download-api-mp3-mp4.p.rapidapi.com',
-        'x-rapidapi-key': 'eeba0cb292msh6c87254b558c894p107bfejsn129dab06685f' // המפתח שלך
+        'x-rapidapi-host': 'youtube-mp4-downloader.p.rapidapi.com',
+        'x-rapidapi-key': 'eeba0cb292msh6c87254b558c894p107bfejsn129dab06685f'
       }
     };
 
-    const apiResponse = await axios.request(options);
-    const directDownloadUrl = apiResponse.data.link; // הקישור הישיר לקובץ ה-MP4
-
-    if (!directDownloadUrl) throw new Error("לא התקבל קישור הורדה מה-API");
-
-    console.log("מתחיל הזרמה לדרייב...");
+    const apiResponse = await axios.request(apiOptions);
     
-    // הורדת הקובץ והעלאה ישירה לדרייב
-    const videoStream = await axios({
+    // שימי לב: ב-API הזה הקישור נמצא בדרך כלל תחת apiResponse.data.url או apiResponse.data.link
+    // ננסה לחלץ אותו בצורה חכמה:
+    const downloadLink = apiResponse.data.url || apiResponse.data.link;
+
+    if (!downloadLink) {
+        console.error("תגובת ה-API המלאה:", apiResponse.data);
+        throw new Error("ה-API לא החזיר קישור הורדה תקין.");
+    }
+
+    console.log("קישור הורדה נמצא! מתחיל הזרמה לדרייב...");
+
+    // הזרמה ישירה לדרייב כדי לעקוף מגבלות גודל
+    const fileStream = await axios({
       method: 'get',
-      url: directDownloadUrl,
+      url: downloadLink,
       responseType: 'stream'
     });
 
     await drive.files.create({
       requestBody: { 
-        name: `video_${videoId}.mp4`, 
+        name: `video_${Date.now()}.mp4`, // שם זמני מבוסס זמן
         parents: [process.env.DRIVE_FOLDER_ID] 
       },
       media: { 
         mimeType: 'video/mp4', 
-        body: videoStream.data 
+        body: fileStream.data 
       },
     });
 
-    res.status(200).send("הקובץ הועלה בהצלחה לדרייב באמצעות ה-API!");
+    console.log("הקובץ הועלה בהצלחה!");
+    res.status(200).send("Success!");
+
   } catch (error) {
     console.error("שגיאה:", error.message);
-    res.status(500).send("שגיאה במערכת: " + error.message);
+    res.status(500).send("שגיאה מהשרת: " + error.message);
   }
 });
 
