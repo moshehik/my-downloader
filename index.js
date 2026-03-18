@@ -2,81 +2,64 @@ const express = require('express');
 const { google } = require('googleapis');
 const axios = require('axios');
 const cors = require('cors');
+const fs = require('fs');
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// הגדרת חיבור לגוגל דרייב
-const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_JSON_KEY),
-  scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive'],
-});
-const drive = google.drive({ version: 'v3', auth });
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.GOOGLE_REDIRECT_URI
+);
 
-// דף בית לבדיקה שהשרת באוויר
-app.get('/', (req, res) => res.send('<h1>השרת של חיה מוכן ומחובר לדרייב!</h1>'));
+// נתיב להתחלת תהליך האישור (חד-פעמי)
+app.get('/auth', (req, res) => {
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/drive.file'],
+    prompt: 'consent'
+  });
+  res.redirect(url);
+});
+
+// נתיב חזור מגוגל
+app.get('/oauth2callback', async (req, res) => {
+  const { code } = req.query;
+  const { tokens } = await oauth2Client.getToken(code);
+  // כאן אנחנו מדפיסים את ה-Refresh Token ללוגים של Render - תצטרכי להעתיק אותו משם!
+  console.log("YOUR_REFRESH_TOKEN:", tokens.refresh_token);
+  res.send("התחברת בהצלחה! העתיקי את ה-Refresh Token מהלוגים ב-Render והוסיפי אותו כמשתנה סביבה.");
+});
 
 app.post('/download', async (req, res) => {
+  // הגדרת הטוקן ששמרנו במשתני הסביבה
+  oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+  const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
   const videoUrl = req.body.url;
-  console.log("בקשה חדשה להורדה:", videoUrl);
-
   try {
-    // שלב 1: פנייה ל-RapidAPI לקבלת קישור ישיר לקובץ
-    const apiOptions = {
-      method: 'GET',
-      url: 'https://youtube-mp4-downloader.p.rapidapi.com/mp4',
+    // פנייה ל-API החיצוני לקבלת קישור
+    const apiRes = await axios.get('https://youtube-mp4-downloader.p.rapidapi.com/mp4', {
       params: { url: videoUrl },
-      headers: {
-        'x-rapidapi-host': 'youtube-mp4-downloader.p.rapidapi.com',
-        'x-rapidapi-key': 'eeba0cb292msh6c87254b558c894p107bfejsn129dab06685f'
-      }
-    };
-
-    const apiResponse = await axios.request(apiOptions);
-    const downloadLink = apiResponse.data.download || apiResponse.data.url || apiResponse.data.link;
-
-    if (!downloadLink) {
-        console.error("תגובת ה-API ללא קישור:", apiResponse.data);
-        throw new Error("ה-API לא החזיר קישור הורדה תקין.");
-    }
-
-    // ניקוי שם הקובץ מתווים אסורים
-    const videoTitle = (apiResponse.data.title || `video_${Date.now()}`).replace(/[\\/:*?"<>|]/g, "");
-    console.log("הקישור נמצא! מתחיל להזרים לדרייב את:", videoTitle);
-
-    // שלב 2: יצירת זרם (Stream) מהקובץ ב-API
-    const fileStream = await axios({
-      method: 'get',
-      url: downloadLink,
-      responseType: 'stream'
+      headers: { 'x-rapidapi-key': 'eeba0cb292msh6c87254b558c894p107bfejsn129dab06685f' }
     });
 
-    // שלב 3: העלאה לדרייב עם הגדרות עקיפת מכסה (Quota)
+    const downloadLink = apiRes.data.download || apiRes.data.url;
+    const title = (apiRes.data.title || "video").replace(/[\\/:*?"<>|]/g, "");
+
+    const fileStream = await axios({ method: 'get', url: downloadLink, responseType: 'stream' });
+
     await drive.files.create({
-      requestBody: { 
-        name: `${videoTitle}.mp4`, 
-        parents: [process.env.DRIVE_FOLDER_ID] 
-      },
-      media: { 
-        mimeType: 'video/mp4', 
-        body: fileStream.data 
-      },
-      // הגדרות קריטיות למניעת שגיאת Service Accounts do not have storage quota
-      supportsAllDrives: true,
-      ignoreDefaultVisibility: true,
-      fields: 'id'
+      requestBody: { name: `${title}.mp4`, parents: [process.env.DRIVE_FOLDER_ID] },
+      media: { mimeType: 'video/mp4', body: fileStream.data }
     });
 
-    console.log("הסרטון הועלה בהצלחה לדרייב!");
-    res.status(200).send("Success!");
-
+    res.status(200).send("הצלחה! הקובץ הועלה בשמך לדרייב.");
   } catch (error) {
-    console.error("שגיאה בתהליך:", error.message);
-    // שליחת הודעת השגיאה חזרה לממשק הלקוח
-    res.status(500).send("שגיאה מהשרת: " + error.message);
+    res.status(500).send("שגיאה: " + error.message);
   }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(process.env.PORT || 10000);
