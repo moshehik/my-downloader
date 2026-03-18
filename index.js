@@ -13,18 +13,17 @@ const auth = new google.auth.GoogleAuth({
 });
 const drive = google.drive({ version: 'v3', auth });
 
-app.get('/', (req, res) => res.send('<h1>השרת של חיה עובד עם API MP4!</h1>'));
+app.get('/', (req, res) => res.send('<h1>השרת של חיה מוכן להורדה!</h1>'));
 
 app.post('/download', async (req, res) => {
   const videoUrl = req.body.url;
-  console.log("מנסה להוריד דרך API חיצוני:", videoUrl);
+  console.log("בקשה חדשה להורדה:", videoUrl);
 
   try {
-    // פנייה ל-API החדש ששלחת
     const apiOptions = {
       method: 'GET',
       url: 'https://youtube-mp4-downloader.p.rapidapi.com/mp4',
-      params: { url: videoUrl }, // כאן אנחנו שולחים את הקישור המלא
+      params: { url: videoUrl },
       headers: {
         'x-rapidapi-host': 'youtube-mp4-downloader.p.rapidapi.com',
         'x-rapidapi-key': 'eeba0cb292msh6c87254b558c894p107bfejsn129dab06685f'
@@ -33,18 +32,19 @@ app.post('/download', async (req, res) => {
 
     const apiResponse = await axios.request(apiOptions);
     
-    // שימי לב: ב-API הזה הקישור נמצא בדרך כלל תחת apiResponse.data.url או apiResponse.data.link
-    // ננסה לחלץ אותו בצורה חכמה:
-    const downloadLink = apiResponse.data.url || apiResponse.data.link;
+    // תיקון כאן: ה-API מחזיר את הקישור בשדה שנקרא 'download'
+    const downloadLink = apiResponse.data.download || apiResponse.data.url || apiResponse.data.link;
 
     if (!downloadLink) {
-        console.error("תגובת ה-API המלאה:", apiResponse.data);
-        throw new Error("ה-API לא החזיר קישור הורדה תקין.");
+        console.log("תגובה מה-API ללא קישור:", apiResponse.data);
+        throw new Error("לא נמצא קישור להורדה בתגובת ה-API");
     }
 
-    console.log("קישור הורדה נמצא! מתחיל הזרמה לדרייב...");
+    // ניקוי שם הקובץ מסימנים אסורים
+    const videoTitle = (apiResponse.data.title || `video_${Date.now()}`).replace(/[\\/:*?"<>|]/g, "");
 
-    // הזרמה ישירה לדרייב כדי לעקוף מגבלות גודל
+    console.log("הקישור נמצא! מתחיל להזרים לדרייב את:", videoTitle);
+
     const fileStream = await axios({
       method: 'get',
       url: downloadLink,
@@ -53,7 +53,7 @@ app.post('/download', async (req, res) => {
 
     await drive.files.create({
       requestBody: { 
-        name: `video_${Date.now()}.mp4`, // שם זמני מבוסס זמן
+        name: `${videoTitle}.mp4`, 
         parents: [process.env.DRIVE_FOLDER_ID] 
       },
       media: { 
@@ -62,11 +62,11 @@ app.post('/download', async (req, res) => {
       },
     });
 
-    console.log("הקובץ הועלה בהצלחה!");
+    console.log("הסרטון הועלה בהצלחה לדרייב!");
     res.status(200).send("Success!");
 
   } catch (error) {
-    console.error("שגיאה:", error.message);
+    console.error("שגיאה בתהליך:", error.message);
     res.status(500).send("שגיאה מהשרת: " + error.message);
   }
 });
