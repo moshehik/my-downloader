@@ -8,6 +8,11 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_REDIRECT_URI
 );
 
+// דף בית פשוט - כדי שלא תקבלי "Cannot GET /"
+app.get('/', (req, res) => {
+  res.send('<h1>השרת באוויר!</h1><a href="/auth">לחצי כאן להתחברות לגוגל</a>');
+});
+
 app.get('/auth', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -22,12 +27,16 @@ app.get('/oauth2callback', async (req, res) => {
   try {
     const { tokens } = await oauth2Client.getToken(code);
     console.log("SUCCESS! Refresh Token:", tokens.refresh_token);
-    res.send("הצלחה! העתיקי את הטוקן מהלוגים.");
+    res.send("הצלחה! העתיקי את הטוקן מהלוגים ב-Render.");
   } catch (error) {
-    // כאן אנחנו מדפיסים את כל הפרטים שגוגל מסתיר
-    console.error("GOOGLE ERROR DETAILS:", error.response.data);
-    res.status(500).send("שגיאה מפורטת בלוגים של Render: " + error.message);
+    if (error.response) {
+      console.error("GOOGLE ERROR DETAILS:", error.response.data);
+    }
+    res.status(500).send("שגיאה: " + error.message);
   }
 });
 
-app.listen(process.env.PORT || 10000);
+// שימי לב - מחקתי את ה-'ף' המיותרת שהייתה כאן
+app.listen(process.env.PORT || 10000, () => {
+  console.log("Server is running on port " + (process.env.PORT || 10000));
+});
