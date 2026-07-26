@@ -55,7 +55,8 @@ app.post('/download', async (req, res) => {
       '-f', ytdlpFormat,
       '-o', outputPath,
       '--ffmpeg-location', ffmpegPath,
-      '--no-playlist'
+      '--no-playlist',
+      '--extractor-args', 'youtube:player_client=android'
     ];
 
     if (format === 'mp3') {
