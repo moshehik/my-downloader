@@ -49,15 +49,24 @@ app.post('/download', async (req, res) => {
         ytdlpFormat = "bestaudio";
     }
 
+    // כתיבת עוגיות אם קיימות במשתני סביבה כדי לעקוף את החסימה של יוטיוב
+    const cookiesPath = path.join(tempDir, 'cookies.txt');
+    if (process.env.YOUTUBE_COOKIES) {
+        fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+    }
+
     // הגדרות עבור yt-dlp
     const ytdlpArgs = [
       url,
       '-f', ytdlpFormat,
       '-o', outputPath,
       '--ffmpeg-location', ffmpegPath,
-      '--no-playlist',
-      '--extractor-args', 'youtube:player_client=android'
+      '--no-playlist'
     ];
+
+    if (process.env.YOUTUBE_COOKIES) {
+        ytdlpArgs.push('--cookies', cookiesPath);
+    }
 
     if (format === 'mp3') {
         ytdlpArgs.push('-x', '--audio-format', 'mp3');
