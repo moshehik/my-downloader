@@ -46,7 +46,22 @@ app.post('/download', async (req, res) => {
 
     const cookiesPath = path.join(tempDir, 'cookies.txt');
     if (process.env.YOUTUBE_COOKIES) {
-        fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+        let cookieData = process.env.YOUTUBE_COOKIES;
+        if (!cookieData.includes('# Netscape HTTP Cookie File')) {
+            let netscape = "# Netscape HTTP Cookie File\n";
+            const pairs = cookieData.split(';');
+            for (let pair of pairs) {
+                pair = pair.trim();
+                if (!pair) continue;
+                const eqIdx = pair.indexOf('=');
+                if (eqIdx === -1) continue;
+                const key = pair.substring(0, eqIdx);
+                const value = pair.substring(eqIdx + 1);
+                netscape += `.youtube.com\tTRUE\t/\tTRUE\t2147483647\t${key}\t${value}\n`;
+            }
+            cookieData = netscape;
+        }
+        fs.writeFileSync(cookiesPath, cookieData);
     }
 
     const ytdlpArgs = [
