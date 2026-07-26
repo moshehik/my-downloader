@@ -70,13 +70,17 @@ app.post('/download', async (req, res) => {
     
     await new Promise((resolve, reject) => {
         const ytdlpProcess = spawn('./yt-dlp', ytdlpArgs, { cwd: __dirname });
+        let errorMessage = '';
         
         ytdlpProcess.stdout.on('data', (data) => console.log(`[yt-dlp stdout]: ${data}`));
-        ytdlpProcess.stderr.on('data', (data) => console.log(`[yt-dlp stderr]: ${data}`));
+        ytdlpProcess.stderr.on('data', (data) => {
+            console.log(`[yt-dlp stderr]: ${data}`);
+            errorMessage += data.toString();
+        });
         
         ytdlpProcess.on('close', (code) => {
             if (code === 0) resolve();
-            else reject(new Error(`yt-dlp process exited with code ${code}`));
+            else reject(new Error(`yt-dlp process exited with code ${code}. Stderr: ${errorMessage}`));
         });
         
         ytdlpProcess.on('error', (err) => reject(err));
